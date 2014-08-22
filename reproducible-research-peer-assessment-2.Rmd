@@ -1,0 +1,146 @@
+Severe Weather Events Impacting Health and Economy
+=======================================================
+
+## Synopsis
+
+This report answers two basic questions about severe weather events:  
+
+1. Which storm events are the most harmful to population health, and 
+2. Which storm events are most impactful to the economy.
+
+To answer these questions, the storm database from the
+U.S. National Oceanic and Atmospheric Administration's (NOAA) is utilized.  This database
+tracks characteristics of major storms and weather events in the United States over time,
+including estimates of any fatalities, injuries, and property and crop damage.
+
+From this data, it's clear that tornadoes are by far most dangerous to people, while flooding are the most costly event types to the economy.  
+
+
+## Data Processing
+In order to prepare for the analysis, a few settings, packages and libraries must be loaded into the R programming environment:
+
+```{r}
+library(knitr)
+library(Hmisc)
+library(reshape)
+library(ggplot2)
+library(car)
+```
+
+### Getting and Loading the Data
+
+From the Coursera "Reproducible Research" course
+[file repository](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2), we obtain the storm data in bzip archive format and extract it.
+
+```{r cache=T,eval=F}
+download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile="repdata-data-StormData.csv.bz2")
+
+bunzip2("repdata-data-StormData.csv.bz2", overwrite=T, remove=F)
+```
+
+The next step is to read the extracted file (in CSV format) into a data frame, which is then converted to a data.table for subsequent analysis.
+
+```{r cache=T}
+stormdata = read.csv("repdata-data-StormData.csv")
+stormdata = data.table(stormdata)
+```
+
+Several of the columns within the dataset are cryptic when evaluated on its own.  The (National Climatic Data Center's
+[record layout document](http://ire.org/media/uploads/files/datalibrary/samplefiles/Storm%20Events/layout08.doc) describes the meaning of the columns and their values, but for simplicity sake in this analysis, a few key columns will be proper-cased and decodified, including the dollar figures and unit conversions.
+
+Additionally, damages will be aggregated for fatalities and injuries for each event type by population and economic perspectives so that it can be plotted in the next section.
+
+```{r cache=T}
+stormdata$EVTYPE <- capitalize(tolower(stormdata$EVTYPE))
+
+damages<-aggregate(cbind(FATALITIES, INJURIES) ~ EVTYPE , stormdata, sum)
+dam<-melt(head(damages[order(-damages$FATALITIES,-damages$INJURIES),],10))
+
+stormdata$PROPDMG<-stormdata$PROPDMG * as.numeric(Recode(stormdata$PROPDMGEXP, 
+                                                         "'0'=1;
+                                                         '1'=10;
+                                                         '2'=100;
+                                                         '3'=1000;
+                                                         '4'=10000;
+                                                         '5'=100000;
+                                                         '6'=1000000;
+                                                         '7'=10000000;
+                                                         '8'=100000000;
+                                                         'B'=1000000000;
+                                                         'h'=100;
+                                                         'H'=100;
+                                                         'K'=1000;
+                                                         'm'=1000000;
+                                                         'M'=1000000;
+                                                         '-'=0;
+                                                         '?'=0;
+                                                         '+'=0",
+                                                         as.factor.result=FALSE))
+stormdata$CROPDMG<-stormdata$CROPDMG * as.numeric(Recode(stormdata$CROPDMGEXP, 
+                                                         "'0'=1;
+                                                         '2'=100;
+                                                         'B'=1000000000;
+                                                         'k'=1000;
+                                                         'K'=1000;
+                                                         'm'=1000000;
+                                                         'M'=1000000;
+                                                         ''=0;
+                                                         '?'=0",
+                                                         as.factor.result=FALSE))
+
+economic<-aggregate(cbind(PROPDMG, CROPDMG) ~ EVTYPE , stormdata, sum)
+eco<-melt(head(economic[order(-economic$PROPDMG,-economic$CROPDMG),],10))
+```
+
+## Results ##
+When analyzing the data, the total numbers are reviewed for each event in aggregate.
+Yearly breakdown analysis is excluded in this basic analysis because there are many significant events that happen only once every few years.
+
+### Human Casualties ###
+
+* Question: Across the United States, which types of events are most harmful with respect to population health?
+
+The below graph presents a barchart of the fatal and non-fatal Injuries, by event type.
+
+```{r}
+ggplot(dam, 
+       aes(x=EVTYPE,
+           y=value,
+           fill=variable)) + 
+        geom_bar(stat = "identity") + 
+        coord_flip() +
+        ggtitle("Harmful events") + 
+        labs(x = "", 
+             y="population affected") +
+        scale_fill_manual (values=c("red","black"), 
+                           labels=c("Deaths","Injuries"))
+
+```
+
+The chart clearly shows that tornados cause the highest rates of injuries, and excessive heat causes the highest rates of death.
+
+
+### Economic impact ###
+
+* Question: Across the United States, which types of events have the greatest economic consequences?
+
+We now look at total property and crop damage per event type, for the 50
+most costly event types.
+
+By using the ggplot2 library we present a combined flipped barplot graph of the property and corp damages, by event type.
+
+```{r}
+ggplot(eco, 
+       aes(x=EVTYPE,
+           y=value,
+           fill=variable)) + 
+        geom_bar(stat = "identity") + 
+        coord_flip() +
+        ggtitle("Economic consequences") + 
+        labs(x = "", 
+             y="cost of damages in dollars") +
+        scale_fill_manual (values=c("red","black"), 
+                           labels=c("Property Damage","Crop Damage"))
+```
+
+As with dangerous event types, the graph highlights that floods have the greatest property damage and storm surge. 
